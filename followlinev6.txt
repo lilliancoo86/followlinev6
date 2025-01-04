@@ -1,0 +1,55 @@
+//@version=6
+indicator('followlinev6', overlay = true)
+
+//          INPUTS: 
+lenFast = input.int(1, title = 'Length of Fast ', minval = 1)
+lenSlow = input.int(5, title = 'Length of Slow ', minval = 1)
+lenC = input.int(10, title = 'Length of  Curve', minval = 1)
+trendPeriod = input.int(5, title = '趋势判断周期', minval = 1)
+vwapDev = input.float(2.0, '轨道宽度', minval = 0.1, step = 0.1)
+
+co(sFast, sSlow, lFast, lSlow, lC) =>
+    fastC = ta.sma(sFast, lFast)
+    slowC = ta.sma(sSlow, lSlow)
+    cC = fastC + slowC
+    ta.sma(cC, lC)
+
+closeC = co(close, close, lenFast, lenSlow, lenC)
+
+//              VWAP计算
+vwap = ta.vwap
+stdDev = ta.stdev(vwap, trendPeriod)
+upperBand = vwap + stdDev * vwapDev
+lowerBand = vwap - stdDev * vwapDev
+
+//              趋势判断
+longTermTrend = ta.sma(closeC, trendPeriod)
+
+// 计算趋势方向，结合VWAP通道
+isUpTrend = longTermTrend > longTermTrend[1] and close > vwap
+isStrongUpTrend = isUpTrend and close > upperBand
+isDownTrend = longTermTrend < longTermTrend[1] and close < vwap
+isStrongDownTrend = isDownTrend and close < lowerBand
+
+wasDownTrend = longTermTrend[1] < longTermTrend[2]
+
+// 在趋势反转点立即改变颜色，考虑VWAP位置
+lineColor = if isStrongUpTrend
+    color.new(color.green, 0)  // 强势上涨
+else if isUpTrend and wasDownTrend
+    color.new(color.green, 40)  // 开始上涨
+else if isStrongDownTrend
+    color.new(color.red, 0)    // 强势下跌
+else if isDownTrend and not wasDownTrend
+    color.new(color.red, 40)   // 开始下跌
+else
+    isUpTrend ? color.new(color.green, 60) : color.new(color.red, 60)  // 普通趋势
+
+c = plot(closeC / 2, title = ' Curve', color = lineColor, linewidth = 2)
+
+// 显示VWAP通道（可选）
+plot(vwap, 'VWAP', color = color.blue, linewidth = 1, display = display.none)
+plot(upperBand, 'Upper Band', color = color.blue, linewidth = 1, style = plot.style_circles, display = display.none)
+plot(lowerBand, 'Lower Band', color = color.blue, linewidth = 1, style = plot.style_circles, display = display.none)
+
+
