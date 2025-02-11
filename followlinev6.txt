@@ -8,6 +8,10 @@ lenC = input.int(10, title = 'Length of  Curve', minval = 1)
 trendPeriod = input.int(5, title = '趋势判断周期', minval = 1)
 vwapDev = input.float(2.0, '轨道宽度', minval = 0.1, step = 0.1)
 
+// 风险管理参数
+stopLossPercent = input.float(0.7, '止损位置(VWAP轨道比例)', minval = 0.5, maxval = 1.0, step = 0.1)
+takeProfitRatio = input.float(1.5, '止盈比率(止损的倍数)', minval = 1.0, step = 0.1)
+
 co(sFast, sSlow, lFast, lSlow, lC) =>
     fastC = ta.sma(sFast, lFast)
     slowC = ta.sma(sSlow, lSlow)
@@ -22,6 +26,10 @@ stdDev = ta.stdev(vwap, trendPeriod)
 upperBand = vwap + stdDev * vwapDev
 lowerBand = vwap - stdDev * vwapDev
 
+// 计算动态止损位
+longStopLoss = math.max(vwap, lowerBand + (upperBand - lowerBand) * stopLossPercent)
+shortStopLoss = math.min(vwap, upperBand - (upperBand - lowerBand) * stopLossPercent)
+
 //              趋势判断
 longTermTrend = ta.sma(closeC, trendPeriod)
 
@@ -32,6 +40,28 @@ isDownTrend = longTermTrend < longTermTrend[1] and close < vwap
 isStrongDownTrend = isDownTrend and close < lowerBand
 
 wasDownTrend = longTermTrend[1] < longTermTrend[2]
+
+// 买卖点判断
+longCondition = isUpTrend and wasDownTrend and close > vwap
+shortCondition = isDownTrend and not wasDownTrend and close < vwap
+
+// 强化买卖信号
+strongLongCondition = isStrongUpTrend and close[1] < upperBand and close > upperBand
+strongShortCondition = isStrongDownTrend and close[1] > lowerBand and close < lowerBand
+
+// 止损信号
+longStopLossHit = strategy.position_size > 0 and close < longStopLoss
+shortStopLossHit = strategy.position_size < 0 and close > shortStopLoss
+
+// 止盈信号
+var float entryPrice = na
+if longCondition or strongLongCondition
+    entryPrice := close
+if shortCondition or strongShortCondition
+    entryPrice := close
+
+longTakeProfitHit = strategy.position_size > 0 and close >= entryPrice + (entryPrice - longStopLoss) * takeProfitRatio
+shortTakeProfitHit = strategy.position_size < 0 and close <= entryPrice - (shortStopLoss - entryPrice) * takeProfitRatio
 
 // 在趋势反转点立即改变颜色，考虑VWAP位置
 lineColor = if isStrongUpTrend
@@ -45,11 +75,24 @@ else if isDownTrend and not wasDownTrend
 else
     isUpTrend ? color.new(color.green, 60) : color.new(color.red, 60)  // 普通趋势
 
-c = plot(closeC / 2, title = ' Curve', color = lineColor, linewidth = 2)
+// 绘制曲线和信号
+plot(closeC / 2, title = ' Curve', color = lineColor, linewidth = 2)
+plot(vwap, 'VWAP', color = color.blue, linewidth = 1)
+plot(upperBand, 'Upper Band', color = color.blue, linewidth = 1, style = plot.style_circles)
+plot(lowerBand, 'Lower Band', color = color.blue, linewidth = 1, style = plot.style_circles)
 
-// 显示VWAP通道（可选）
-plot(vwap, 'VWAP', color = color.blue, linewidth = 1, display = display.none)
-plot(upperBand, 'Upper Band', color = color.blue, linewidth = 1, style = plot.style_circles, display = display.none)
-plot(lowerBand, 'Lower Band', color = color.blue, linewidth = 1, style = plot.style_circles, display = display.none)
+// 绘制止损止盈线
+plot(longStopLoss, '多头止损位', color = color.new(color.red, 50), style = plot.style_circles)
+plot(shortStopLoss, '空头止损位', color = color.new(color.red, 50), style = plot.style_circles)
 
+// 绘制买卖点
+plotshape(longCondition, title="买入信号", location=location.belowbar, color=color.green, style=shape.triangleup, size=size.small)
+plotshape(shortCondition, title="卖出信号", location=location.abovebar, color=color.red, style=shape.triangledown, size=size.small)
+plotshape(strongLongCondition, title="强势买入", location=location.belowbar, color=color.green, style=shape.triangleup, size=size.large)
+plotshape(strongShortCondition, title="强势卖出", location=location.abovebar, color=color.red, style=shape.triangledown, size=size.large)
 
+// 绘制止损止盈信号
+plotshape(longStopLossHit, title="多头止损", location=location.abovebar, color=color.red, style=shape.xcross, size=size.small)
+plotshape(shortStopLossHit, title="空头止损", location=location.belowbar, color=color.red, style=shape.xcross, size=size.small)
+plotshape(longTakeProfitHit, title="多头止盈", location=location.abovebar, color=color.green, style=shape.xcross, size=size.small)
+plotshape(shortTakeProfitHit, title="空头止盈", location=location.belowbar, color=color.green, style=shape.xcross, size=size.small) 
